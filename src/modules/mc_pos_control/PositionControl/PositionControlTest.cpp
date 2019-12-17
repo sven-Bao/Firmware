@@ -100,11 +100,11 @@ public:
 		Vector3f(NAN, NAN, NAN).copyTo(_input_setpoint.thrust);
 	}
 
-	void runController()
+	void runController(bool expected_update_result)
 	{
 		_position_control.setConstraints(_contraints);
 		_position_control.setInputSetpoint(_input_setpoint);
-		_position_control.update(.1f);
+		EXPECT_EQ(_position_control.update(.1f), expected_update_result);
 		_position_control.getLocalPositionSetpoint(_output_setpoint);
 		_position_control.getAttitudeSetpoint(_attitude);
 	}
@@ -138,7 +138,7 @@ TEST_F(PositionControlBasicDirectionTest, PositionDirection)
 	_input_setpoint.x = .1f;
 	_input_setpoint.y = .1f;
 	_input_setpoint.z = -.1f;
-	runController();
+	runController(true);
 	checkDirection();
 }
 
@@ -147,7 +147,7 @@ TEST_F(PositionControlBasicDirectionTest, VelocityDirection)
 	_input_setpoint.vx = .1f;
 	_input_setpoint.vy = .1f;
 	_input_setpoint.vz = -.1f;
-	runController();
+	runController(true);
 	checkDirection();
 }
 
@@ -157,14 +157,14 @@ TEST_F(PositionControlBasicTest, TiltLimit)
 	_input_setpoint.y = 10.f;
 	_input_setpoint.z = -0.f;
 
-	runController();
+	runController(true);
 	Vector3f body_z = Quatf(_attitude.q_d).dcm_z();
 	float angle = acosf(body_z.dot(Vector3f(0.f, 0.f, 1.f)));
 	EXPECT_GT(angle, 0.f);
 	EXPECT_LE(angle, 1.f);
 
 	_contraints.tilt = .5f;
-	runController();
+	runController(true);
 	body_z = Quatf(_attitude.q_d).dcm_z();
 	angle = acosf(body_z.dot(Vector3f(0.f, 0.f, 1.f)));
 	EXPECT_GT(angle, 0.f);
@@ -177,7 +177,7 @@ TEST_F(PositionControlBasicTest, VelocityLimit)
 	_input_setpoint.y = 10.f;
 	_input_setpoint.z = -10.f;
 
-	runController();
+	runController(true);
 	Vector2f velocity_xy(_output_setpoint.vx, _output_setpoint.vy);
 	EXPECT_LE(velocity_xy.norm(), 1.f);
 	EXPECT_LE(abs(_output_setpoint.vz), 1.f);
@@ -189,7 +189,7 @@ TEST_F(PositionControlBasicTest, ThrustLimit)
 	_input_setpoint.y = 10.f;
 	_input_setpoint.z = -10.f;
 
-	runController();
+	runController(true);
 	EXPECT_EQ(_attitude.thrust_body[0], 0.f);
 	EXPECT_EQ(_attitude.thrust_body[1], 0.f);
 	EXPECT_LT(_attitude.thrust_body[2], -.1f);
@@ -202,7 +202,7 @@ TEST_F(PositionControlBasicTest, FailsafeInput)
 	_input_setpoint.thrust[0] = _input_setpoint.thrust[1] = 0.f;
 	_input_setpoint.acceleration[0] = _input_setpoint.acceleration[1] = 0.f;
 
-	runController();
+	runController(true);
 	EXPECT_EQ(_attitude.thrust_body[0], 0.f);
 	EXPECT_EQ(_attitude.thrust_body[1], 0.f);
 	EXPECT_LT(_output_setpoint.thrust[2], -.1f);
@@ -217,7 +217,7 @@ TEST_F(PositionControlBasicTest, InputCombinationsPosition)
 	_input_setpoint.y = .2f;
 	_input_setpoint.z = .3f;
 
-	runController();
+	runController(true);
 	EXPECT_EQ(_output_setpoint.x, .1f);
 	EXPECT_EQ(_output_setpoint.y, .2f);
 	EXPECT_EQ(_output_setpoint.z, .3f);
@@ -235,7 +235,7 @@ TEST_F(PositionControlBasicTest, InputCombinationsPositionVelocity)
 	_input_setpoint.vy = .2f;
 	_input_setpoint.z = .3f; // altitude
 
-	runController();
+	runController(true);
 	// EXPECT_TRUE(isnan(_output_setpoint.x));
 	// EXPECT_TRUE(isnan(_output_setpoint.y));
 	EXPECT_EQ(_output_setpoint.z, .3f);
@@ -245,4 +245,40 @@ TEST_F(PositionControlBasicTest, InputCombinationsPositionVelocity)
 	EXPECT_FALSE(isnan(_output_setpoint.thrust[0]));
 	EXPECT_FALSE(isnan(_output_setpoint.thrust[1]));
 	EXPECT_FALSE(isnan(_output_setpoint.thrust[2]));
+}
+
+TEST_F(PositionControlBasicTest, InvalidSetpoint)
+{
+	runController(false);
+	_input_setpoint.x = .1f;
+	runController(false);
+	_input_setpoint.vy = .2f;
+	runController(false);
+	_input_setpoint.thrust[2] = .3f;
+	runController(true);
+}
+
+TEST_F(PositionControlBasicTest, InvalidState)
+{
+	_input_setpoint.x = .1f;
+	_input_setpoint.y = .2f;
+	_input_setpoint.z = .3f;
+
+	PositionControlStates states{};
+	states.position(0) = NAN;
+	_position_control.setState(states);
+	runController(false);
+
+	states.velocity(0) = NAN;
+	_position_control.setState(states);
+	runController(false);
+
+	states.position(0) = 0.f;
+	_position_control.setState(states);
+	runController(false);
+
+	states.velocity(0) = 0.f;
+	states.acceleration(1) = NAN;
+	_position_control.setState(states);
+	runController(true);
 }
