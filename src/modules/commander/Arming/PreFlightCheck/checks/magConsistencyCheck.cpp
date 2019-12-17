@@ -43,8 +43,7 @@
 #include <uORB/topics/sensor_preflight.h>
 
 // return false if the magnetomer measurements are inconsistent
-bool PreFlightCheck::magConsistencyCheck(orb_advert_t *mavlink_log_pub, vehicle_status_s &status,
-		const bool report_status)
+bool PreFlightCheck::magConsistencyCheck(orb_advert_t *mavlink_log_pub, vehicle_status_s &status, const bool report_status)
 {
 	bool pass = false; // flag for result of checks
 
